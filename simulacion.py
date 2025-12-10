@@ -410,22 +410,32 @@ class Simulacion:
         graf_w, graf_h = panel_w - 100, panel_h - 200
 
         pygame.draw.rect(self.screen, BG_CARD_LIGHT, (graf_x, graf_y, graf_w, graf_h), border_radius=8)
+        pygame.draw.rect(self.screen, BORDER_COLOR, (graf_x, graf_y, graf_w, graf_h), 1, border_radius=8)
 
         for i in range(6):
             y = graf_y + (i * graf_h // 5)
             pygame.draw.line(self.screen, BORDER_COLOR, (graf_x, y), (graf_x + graf_w, y), 1)
             temp_label = 100 - (i * 20)
-            label_surf = self.fuente_mini.render(f"{temp_label}°", True, TEXT_SECONDARY)
-            self.screen.blit(label_surf, (graf_x - 35, y - 8))
+            label_surf = self.fuente_mini.render(f"{temp_label}°C", True, TEXT_SECONDARY)
+            self.screen.blit(label_surf, (graf_x - 45, y - 8))
 
         y_critica = graf_y + graf_h - int((95 / 100) * graf_h)
         y_segura = graf_y + graf_h - int((70 / 100) * graf_h)
         y_setpoint = graf_y + graf_h - int((self.pid.setpoint / 100) * graf_h)
 
         pygame.draw.line(self.screen, ACCENT_RED, (graf_x, y_critica), (graf_x + graf_w, y_critica), 2)
+        zona_critica_txt = self.fuente_mini.render("95°C", True, ACCENT_RED)
+        self.screen.blit(zona_critica_txt, (graf_x + graf_w + 10, y_critica - 8))
+
         pygame.draw.line(self.screen, ACCENT_ORANGE, (graf_x, y_segura), (graf_x + graf_w, y_segura), 2)
+        zona_segura_txt = self.fuente_mini.render("70°C", True, ACCENT_ORANGE)
+        self.screen.blit(zona_segura_txt, (graf_x + graf_w + 10, y_segura - 8))
+
+        # Setpoint del controlador
         if self.pid_activado:
             pygame.draw.line(self.screen, ACCENT_YELLOW, (graf_x, y_setpoint), (graf_x + graf_w, y_setpoint), 2)
+            setpoint_txt = self.fuente_mini.render(f"{self.pid.setpoint:.0f}°C", True, ACCENT_YELLOW)
+            self.screen.blit(setpoint_txt, (graf_x + graf_w + 10, y_setpoint - 8))
 
         if len(self.historial_temp) > 1:
             puntos_temp, puntos_vent = [], []
@@ -440,24 +450,29 @@ class Simulacion:
                     puntos_vent.append((x, max(graf_y, min(graf_y + graf_h, y_vent))))
 
             if len(puntos_vent) > 1:
-                pygame.draw.lines(self.screen, ACCENT_BLUE, False, puntos_vent, 2)
+                pygame.draw.lines(self.screen, ACCENT_BLUE, False, puntos_vent, 3)
             if len(puntos_temp) > 1:
                 pygame.draw.lines(self.screen, ACCENT_RED, False, puntos_temp, 3)
 
         leyenda_y = panel_y + panel_h - 70
+        leyenda_bg_h = 50
+        leyenda_bg = pygame.Surface((panel_w - 40, leyenda_bg_h))
+        leyenda_bg.set_alpha(50)
+        leyenda_bg.fill(BG_CARD_LIGHT)
+        self.screen.blit(leyenda_bg, (panel_x + 20, leyenda_y - 10))
 
-        pygame.draw.line(self.screen, ACCENT_RED, (graf_x, leyenda_y), (graf_x + 40, leyenda_y), 3)
-        leg1 = self.fuente_pequena.render("Temperatura", True, TEXT_PRIMARY)
-        self.screen.blit(leg1, (graf_x + 50, leyenda_y - 8))
-
-        pygame.draw.line(self.screen, ACCENT_BLUE, (graf_x + 200, leyenda_y), (graf_x + 240, leyenda_y), 3)
-        leg2 = self.fuente_pequena.render("Ventiladores", True, TEXT_PRIMARY)
-        self.screen.blit(leg2, (graf_x + 250, leyenda_y - 8))
-
+        elementos_leyenda = [
+            (ACCENT_RED, "Temperatura (°C)", graf_x),
+            (ACCENT_BLUE, "Velocidad Ventiladores (%)", graf_x + 220),
+        ]
+        
         if self.pid_activado:
-            pygame.draw.line(self.screen, ACCENT_YELLOW, (graf_x + 400, leyenda_y), (graf_x + 440, leyenda_y), 3)
-            leg3 = self.fuente_pequena.render("Setpoint", True, TEXT_PRIMARY)
-            self.screen.blit(leg3, (graf_x + 450, leyenda_y - 8))
+            elementos_leyenda.append((ACCENT_YELLOW, "Setpoint", graf_x + 500))
+
+        for color, label, x_pos in elementos_leyenda:
+            pygame.draw.line(self.screen, color, (x_pos, leyenda_y), (x_pos + 30, leyenda_y), 3)
+            leg_surf = self.fuente_pequena.render(label, True, TEXT_PRIMARY)
+            self.screen.blit(leg_surf, (x_pos + 40, leyenda_y - 8))
 
     def dibujar_advertencias(self):
         if self.computadora.dañada:
