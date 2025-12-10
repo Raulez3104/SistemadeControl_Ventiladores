@@ -3,8 +3,15 @@ import sys
 import math
 import os
 from collections import deque
+from datetime import datetime
 import control as ct
 import numpy as np
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+from reportlab.lib.units import inch
+from PIL import Image as PILImage
 
 pygame.init()
 
@@ -98,7 +105,6 @@ class ComputadoraSimulada:
         self.carga_cpu = 0.0
         self.velocidad_ventilador = 30.0
 
-        # Parámetros térmicos basados en CPUs reales
         self.tdp_max = 180.0
         self.thermal_capacity = 150.0
         self.natural_k = 0.3
@@ -175,7 +181,6 @@ class Boton:
         color = self.color_hover if self.activo else self.color
         pygame.draw.rect(screen, color, self.rect, border_radius=10)
         
-        # Borde del botón con efecto
         border_color = tuple(min(c + 30, 255) for c in color) if self.activo else BORDER_COLOR
         pygame.draw.rect(screen, border_color, self.rect, 2, border_radius=10)
 
@@ -185,6 +190,160 @@ class Boton:
 
     def contiene_punto(self, pos):
         return self.rect.collidepoint(pos)
+
+class GeneradorReportes:
+    def __init__(self):
+        self.ruta_reportes = "reportes"
+        if not os.path.exists(self.ruta_reportes):
+            os.makedirs(self.ruta_reportes)
+    
+    def generar_reporte(self, computadora, pid, historial_temp, historial_vent, tiempo_total, pid_activado):
+        """Genera un reporte PDF con los datos de la simulación"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre_archivo = f"reporte_simulacion_{timestamp}.pdf"
+        ruta_archivo = os.path.join(self.ruta_reportes, nombre_archivo)
+        
+        # Crear PDF
+        doc = SimpleDocTemplate(ruta_archivo, pagesize=letter,
+                              rightMargin=0.5*inch, leftMargin=0.5*inch,
+                              topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        # Contenido del documento
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Título
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#4287f5'),
+            spaceAfter=30,
+            alignment=1
+        )
+        story.append(Paragraph("REPORTE DE SIMULACIÓN - SISTEMA DE CONTROL PID", title_style))
+        story.append(Spacer(1, 0.3*inch))
+        
+        # Información general
+        fecha_reporte = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        info_general = f"""
+        <b>Fecha del Reporte:</b> {fecha_reporte}<br/>
+        <b>Duración de la Simulación:</b> {tiempo_total:.2f} segundos<br/>
+        <b>Control PID:</b> {'ACTIVADO' if pid_activado else 'DESACTIVADO'}<br/>
+        """
+        story.append(Paragraph(info_general, styles['Normal']))
+        story.append(Spacer(1, 0.2*inch))
+        
+        if len(historial_temp) > 0:
+            temps = list(historial_temp)
+            temp_min = min(temps)
+            temp_max = max(temps)
+            temp_prom = sum(temps) / len(temps)
+            
+            stats_title = ParagraphStyle(
+                'StatsTitle',
+                parent=styles['Heading2'],
+                fontSize=14,
+                textColor=colors.HexColor('#28cd64'),
+                spaceAfter=12
+            )
+            story.append(Paragraph("ESTADÍSTICAS DE TEMPERATURA", stats_title))
+            
+            temp_data = [
+                ["Métrica", "Valor"],
+                ["Temperatura Mínima", f"{temp_min:.1f}°C"],
+                ["Temperatura Máxima", f"{temp_max:.1f}°C"],
+                ["Temperatura Promedio", f"{temp_prom:.1f}°C"],
+                ["Setpoint del PID", f"{pid.setpoint:.1f}°C"],
+                ["Estado Final", f"{computadora.temperatura:.1f}°C"]
+            ]
+            
+            temp_table = Table(temp_data, colWidths=[3*inch, 2.5*inch])
+            temp_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4287f5')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#1e1f28')),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.whitesmoke),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#3c4b64')),
+            ]))
+            story.append(temp_table)
+            story.append(Spacer(1, 0.2*inch))
+        
+        if len(historial_vent) > 0:
+            vents = list(historial_vent)
+            vent_min = min(vents)
+            vent_max = max(vents)
+            vent_prom = sum(vents) / len(vents)
+            
+            vent_title = ParagraphStyle(
+                'VentTitle',
+                parent=styles['Heading2'],
+                fontSize=14,
+                textColor=colors.HexColor('#a855f7'),
+                spaceAfter=12
+            )
+            story.append(Paragraph("ESTADÍSTICAS DE VENTILADORES", vent_title))
+            
+            vent_data = [
+                ["Métrica", "Valor"],
+                ["Velocidad Mínima", f"{vent_min:.1f}%"],
+                ["Velocidad Máxima", f"{vent_max:.1f}%"],
+                ["Velocidad Promedio", f"{vent_prom:.1f}%"],
+            ]
+            
+            vent_table = Table(vent_data, colWidths=[3*inch, 2.5*inch])
+            vent_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#a855f7')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#1e1f28')),
+                ('TEXTCOLOR', (0, 1), (-1, -1), colors.whitesmoke),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#3c4b64')),
+            ]))
+            story.append(vent_table)
+            story.append(Spacer(1, 0.2*inch))
+
+        pid_title = ParagraphStyle(
+            'PidTitle',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#ff8c1e'),
+            spaceAfter=12
+        )
+        story.append(Paragraph("PARÁMETROS DEL CONTROLADOR PID", pid_title))
+        
+        pid_data = [
+            ["Parámetro", "Valor"],
+            ["Ganancia Proporcional (Kp)", f"{pid.kp:.2f}"],
+            ["Ganancia Integral (Ki)", f"{pid.ki:.2f}"],
+            ["Ganancia Derivativa (Kd)", f"{pid.kd:.2f}"],
+            ["Rango de Salida", f"{pid.output_min:.0f}% - {pid.output_max:.0f}%"],
+            ["Rango Integrador", f"{pid.int_min:.0f} - {pid.int_max:.0f}"],
+        ]
+        
+        pid_table = Table(pid_data, colWidths=[3*inch, 2.5*inch])
+        pid_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ff8c1e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#1e1f28')),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.whitesmoke),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#3c4b64')),
+        ]))
+        story.append(pid_table)
+        
+        doc.build(story)
+        return nombre_archivo, ruta_archivo
 
 class Simulacion:
     def __init__(self):
@@ -207,12 +366,18 @@ class Simulacion:
         self.historial_temp = deque(maxlen=400)
         self.historial_ventilador = deque(maxlen=400)
         self.tiempo_total = 0.0
+        
+        # Generador de reportes
+        self.generador_reportes = GeneradorReportes()
+        self.mensaje_reporte = None
+        self.tiempo_mensaje_reporte = 0.0
 
         self.angulo_ventilador1 = 0.0
         self.angulo_ventilador2 = 0.0
 
         self.btn_pid = Boton(50, 800, 200, 60, "PID: OFF", ACCENT_RED)
         self.btn_reiniciar = Boton(270, 800, 200, 60, "Reiniciar", BG_CARD_LIGHT)
+        self.btn_reporte = Boton(1320, 800, 180, 60, "Generar Reporte", ACCENT_GREEN)
 
         self.btn_idle = Boton(550, 800, 140, 60, "Idle (5%)", ACCENT_BLUE)
         self.btn_oficina = Boton(710, 800, 160, 60, "Oficina (30%)", ACCENT_GREEN)
@@ -226,6 +391,7 @@ class Simulacion:
 
         self.btn_pid.activo = self.btn_pid.contiene_punto(mouse_pos)
         self.btn_reiniciar.activo = self.btn_reiniciar.contiene_punto(mouse_pos)
+        self.btn_reporte.activo = self.btn_reporte.contiene_punto(mouse_pos)
         self.btn_idle.activo = self.btn_idle.contiene_punto(mouse_pos)
         self.btn_oficina.activo = self.btn_oficina.contiene_punto(mouse_pos)
         self.btn_gaming.activo = self.btn_gaming.contiene_punto(mouse_pos)
@@ -237,7 +403,6 @@ class Simulacion:
 
             elif evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_F11:
-                    # Alternar pantalla completa
                     self.pantalla_completa = not self.pantalla_completa
                     if self.pantalla_completa:
                         self.screen = pygame.display.set_mode((ANCHO, ALTO), pygame.FULLSCREEN)
@@ -254,6 +419,19 @@ class Simulacion:
 
                 elif self.btn_reiniciar.contiene_punto(mouse_pos):
                     self.reiniciar()
+
+                elif self.btn_reporte.contiene_punto(mouse_pos):
+                    try:
+                        nombre, ruta = self.generador_reportes.generar_reporte(
+                            self.computadora, self.pid, self.historial_temp, 
+                            self.historial_ventilador, self.tiempo_total, self.pid_activado
+                        )
+                        self.mensaje_reporte = f"Reporte generado: {nombre}"
+                        self.tiempo_mensaje_reporte = 5.0
+                        os.startfile(ruta)
+                    except Exception as e:
+                        self.mensaje_reporte = f"Error al generar reporte: {str(e)}"
+                        self.tiempo_mensaje_reporte = 5.0
 
                 elif self.btn_idle.contiene_punto(mouse_pos):
                     self.computadora.ajustar_carga(5)
@@ -295,6 +473,9 @@ class Simulacion:
         self.angulo_ventilador2 = (self.angulo_ventilador2 - velocidad_angular * dt) % 360
 
         self.tiempo_total += dt
+        
+        if self.tiempo_mensaje_reporte > 0:
+            self.tiempo_mensaje_reporte -= dt
 
     def dibujar_ventilador(self, x, y, radio, angulo, color):
         pygame.draw.circle(self.screen, BORDER_COLOR, (x, y), radio + 5, 3)
@@ -453,7 +634,7 @@ class Simulacion:
         zona_segura_txt = self.fuente_mini.render("70°C", True, ACCENT_ORANGE)
         self.screen.blit(zona_segura_txt, (graf_x + graf_w + 10, y_segura - 8))
 
-        # Setpoint del controlador
+        # Setpoint
         if self.pid_activado:
             pygame.draw.line(self.screen, ACCENT_YELLOW, (graf_x, y_setpoint), (graf_x + graf_w, y_setpoint), 2)
             setpoint_txt = self.fuente_mini.render(f"{self.pid.setpoint:.0f}°C", True, ACCENT_YELLOW)
@@ -513,7 +694,7 @@ class Simulacion:
 
         elif self.computadora.esta_sobrecalentada():
             if int(self.tiempo_total * 3) % 2 == 0:
-                warning_surf = self.fuente_media.render("⚠ TEMPERATURA CRÍTICA ⚠", True, ACCENT_RED)
+                warning_surf = self.fuente_media.render("TEMPERATURA CRÍTICA", True, ACCENT_RED)
                 self.screen.blit(warning_surf, (ANCHO // 2 - warning_surf.get_width() // 2, 770))
 
     def dibujar(self):
@@ -529,6 +710,7 @@ class Simulacion:
 
         self.btn_pid.dibujar_boton(self.screen, self.fuente_pequena)
         self.btn_reiniciar.dibujar_boton(self.screen, self.fuente_pequena)
+        self.btn_reporte.dibujar_boton(self.screen, self.fuente_pequena)
 
         preset_label = self.fuente_pequena.render("Perfiles de Carga:", True, TEXT_SECONDARY)
         self.screen.blit(preset_label, (550, 775))
@@ -537,6 +719,11 @@ class Simulacion:
         self.btn_oficina.dibujar_boton(self.screen, self.fuente_mini)
         self.btn_gaming.dibujar_boton(self.screen, self.fuente_mini)
         self.btn_render.dibujar_boton(self.screen, self.fuente_mini)
+        
+        # Mostrar mensaje de reporte
+        if self.tiempo_mensaje_reporte > 0 and self.mensaje_reporte:
+            msg_surf = self.fuente_pequena.render(self.mensaje_reporte, True, ACCENT_GREEN)
+            self.screen.blit(msg_surf, (ANCHO // 2 - msg_surf.get_width() // 2, 20))
 
         self.dibujar_advertencias()
 
