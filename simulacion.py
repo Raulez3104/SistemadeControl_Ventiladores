@@ -1,6 +1,7 @@
 import pygame
 import sys
 import math
+import os
 from collections import deque
 import control as ct
 import numpy as np
@@ -10,21 +11,23 @@ pygame.init()
 ANCHO, ALTO = 1600, 900
 FPS = 60
 
-BG_DARK = (15, 15, 25)
-BG_CARD = (25, 30, 45)
-BG_CARD_LIGHT = (35, 40, 60)
-ACCENT_BLUE = (59, 130, 246)
-ACCENT_GREEN = (34, 197, 94)
-ACCENT_RED = (239, 68, 68)
-ACCENT_ORANGE = (249, 115, 22)
-ACCENT_YELLOW = (234, 179, 8)
-TEXT_PRIMARY = (248, 250, 252)
-TEXT_SECONDARY = (148, 163, 184)
-BORDER_COLOR = (51, 65, 85)
+BG_DARK = (10, 12, 20)
+BG_CARD = (20, 25, 40)
+BG_CARD_LIGHT = (30, 38, 55)
+BG_CARD_LIGHTER = (40, 48, 65)
+ACCENT_BLUE = (66, 135, 245)
+ACCENT_GREEN = (40, 205, 100)
+ACCENT_RED = (245, 75, 75)
+ACCENT_ORANGE = (255, 140, 30)
+ACCENT_YELLOW = (255, 200, 20)
+ACCENT_PURPLE = (168, 85, 247)
+TEXT_PRIMARY = (250, 252, 255)
+TEXT_SECONDARY = (155, 170, 190)
+BORDER_COLOR = (60, 75, 100)
 
 class ControladorPID:
-    def __init__(self, kp=2.0, ki=0.15, kd=1.5, setpoint=75.0, 
-                 output_limits=(30, 100), integrator_limits=(-30, 30)):
+    def __init__(self, kp=3.5, ki=0.25, kd=2.0, setpoint=75.0, 
+                 output_limits=(30, 100), integrator_limits=(-50, 50)):
         self.kp = kp
         self.ki = ki
         self.kd = kd
@@ -36,7 +39,7 @@ class ControladorPID:
         self._integral = 0.0
         self._prev_output = 30.0
         
-        self.deadband = 2.0
+        self.deadband = 1.0
         
         self.Kp = ct.TransferFunction([kp], [1])
         self.Ki = ct.TransferFunction([ki], [1, 0])
@@ -76,7 +79,10 @@ class ControladorPID:
         
         salida_final = max(self.output_min, min(self.output_max, salida_final))
         
-        max_cambio = 15.0 * dt
+        if error > 10: 
+            max_cambio = 25.0 * dt
+        else:
+            max_cambio = 15.0 * dt
         salida_final = self._prev_output + max(min(salida_final - self._prev_output, max_cambio), -max_cambio)
         
         self._prev_output = salida_final
@@ -165,10 +171,13 @@ class Boton:
         self.color_hover = tuple(min(c + 20, 255) for c in color)
         self.activo = False
 
-    def dibujar(self, screen, fuente):
+    def dibujar_boton(self, screen, fuente):
         color = self.color_hover if self.activo else self.color
         pygame.draw.rect(screen, color, self.rect, border_radius=10)
-        pygame.draw.rect(screen, BORDER_COLOR, self.rect, 2, border_radius=10)
+        
+        # Borde del botón con efecto
+        border_color = tuple(min(c + 30, 255) for c in color) if self.activo else BORDER_COLOR
+        pygame.draw.rect(screen, border_color, self.rect, 2, border_radius=10)
 
         texto_surf = fuente.render(self.texto, True, TEXT_PRIMARY)
         texto_rect = texto_surf.get_rect(center=self.rect.center)
@@ -179,7 +188,8 @@ class Boton:
 
 class Simulacion:
     def __init__(self):
-        self.screen = pygame.display.set_mode((ANCHO, ALTO))
+        self.pantalla_completa = False
+        self.screen = pygame.display.set_mode((ANCHO, ALTO), pygame.RESIZABLE | pygame.SHOWN)
         pygame.display.set_caption("Sistema de Control PID - Refrigeración CPU")
         self.clock = pygame.time.Clock()
 
@@ -224,6 +234,15 @@ class Simulacion:
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 self.corriendo = False
+
+            elif evento.type == pygame.KEYDOWN:
+                if evento.key == pygame.K_F11:
+                    # Alternar pantalla completa
+                    self.pantalla_completa = not self.pantalla_completa
+                    if self.pantalla_completa:
+                        self.screen = pygame.display.set_mode((ANCHO, ALTO), pygame.FULLSCREEN)
+                    else:
+                        self.screen = pygame.display.set_mode((ANCHO, ALTO), pygame.RESIZABLE)
 
             elif evento.type == pygame.MOUSEBUTTONDOWN:
                 if self.btn_pid.contiene_punto(mouse_pos):
@@ -303,7 +322,8 @@ class Simulacion:
         panel_w, panel_h = 700, 450
 
         pygame.draw.rect(self.screen, BG_CARD, (panel_x, panel_y, panel_w, panel_h), border_radius=15)
-        pygame.draw.rect(self.screen, BORDER_COLOR, (panel_x, panel_y, panel_w, panel_h), 2, border_radius=15)
+        pygame.draw.rect(self.screen, ACCENT_PURPLE, (panel_x, panel_y, panel_w, panel_h), 3, border_radius=15)
+        pygame.draw.rect(self.screen, BORDER_COLOR, (panel_x+2, panel_y+2, panel_w-4, panel_h-4), 1, border_radius=14)
 
         titulo = self.fuente_titulo.render("VISUALIZACIÓN CPU", True, TEXT_PRIMARY)
         self.screen.blit(titulo, (panel_x + 20, panel_y + 20))
@@ -352,7 +372,8 @@ class Simulacion:
         panel_w, panel_h = 700, 220
 
         pygame.draw.rect(self.screen, BG_CARD, (panel_x, panel_y, panel_w, panel_h), border_radius=15)
-        pygame.draw.rect(self.screen, BORDER_COLOR, (panel_x, panel_y, panel_w, panel_h), 2, border_radius=15)
+        pygame.draw.rect(self.screen, ACCENT_BLUE, (panel_x, panel_y, panel_w, panel_h), 3, border_radius=15)
+        pygame.draw.rect(self.screen, BORDER_COLOR, (panel_x+2, panel_y+2, panel_w-4, panel_h-4), 1, border_radius=14)
 
         estado, color_estado = self.computadora.obtener_estado_temperatura()
         temp_text = f"{self.computadora.temperatura:.1f}°C"
@@ -401,7 +422,8 @@ class Simulacion:
         panel_w, panel_h = 750, 700
 
         pygame.draw.rect(self.screen, BG_CARD, (panel_x, panel_y, panel_w, panel_h), border_radius=15)
-        pygame.draw.rect(self.screen, BORDER_COLOR, (panel_x, panel_y, panel_w, panel_h), 2, border_radius=15)
+        pygame.draw.rect(self.screen, ACCENT_GREEN, (panel_x, panel_y, panel_w, panel_h), 3, border_radius=15)
+        pygame.draw.rect(self.screen, BORDER_COLOR, (panel_x+2, panel_y+2, panel_w-4, panel_h-4), 1, border_radius=14)
 
         titulo = self.fuente_titulo.render("MONITOREO EN TIEMPO REAL", True, TEXT_PRIMARY)
         self.screen.blit(titulo, (panel_x + 20, panel_y + 20))
@@ -496,21 +518,25 @@ class Simulacion:
 
     def dibujar(self):
         self.screen.fill(BG_DARK)
+        
+        # Líneas decorativas en los bordes
+        pygame.draw.line(self.screen, ACCENT_BLUE, (0, 0), (ANCHO, 0), 2)
+        pygame.draw.line(self.screen, ACCENT_BLUE, (0, ALTO-1), (ANCHO, ALTO-1), 2)
 
         self.dibujar_panel_metricas()
         self.dibujar_cpu_chip()
         self.dibujar_grafica()
 
-        self.btn_pid.dibujar(self.screen, self.fuente_pequena)
-        self.btn_reiniciar.dibujar(self.screen, self.fuente_pequena)
+        self.btn_pid.dibujar_boton(self.screen, self.fuente_pequena)
+        self.btn_reiniciar.dibujar_boton(self.screen, self.fuente_pequena)
 
         preset_label = self.fuente_pequena.render("Perfiles de Carga:", True, TEXT_SECONDARY)
         self.screen.blit(preset_label, (550, 775))
 
-        self.btn_idle.dibujar(self.screen, self.fuente_mini)
-        self.btn_oficina.dibujar(self.screen, self.fuente_mini)
-        self.btn_gaming.dibujar(self.screen, self.fuente_mini)
-        self.btn_render.dibujar(self.screen, self.fuente_mini)
+        self.btn_idle.dibujar_boton(self.screen, self.fuente_mini)
+        self.btn_oficina.dibujar_boton(self.screen, self.fuente_mini)
+        self.btn_gaming.dibujar_boton(self.screen, self.fuente_mini)
+        self.btn_render.dibujar_boton(self.screen, self.fuente_mini)
 
         self.dibujar_advertencias()
 
@@ -528,5 +554,6 @@ class Simulacion:
         sys.exit()
 
 if __name__ == "__main__":
+    os.environ['SDL_VIDEODRIVER'] = 'windows'
     sim = Simulacion()
     sim.ejecutar()
